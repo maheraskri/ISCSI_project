@@ -1,0 +1,51 @@
+---
+- name: Configure ISCSI Target
+  hosts: localhost
+  tasks: 
+  - name: Configure target using bash script
+    script: /root/iscsi_project/iscsi_target.sh
+  - name: Open target port on firewall
+    firewalld:
+      state: enabled
+      service: iscsi-target
+      permanent: yes
+      immediate: yes
+- name: Configure ISCSI initiator
+  hosts: client
+  gather_facts: no
+  vars: 
+    target_IQN: iqn.2023-10.lab.askri:target
+    target_IP: 10.1.1.100
+  tasks:
+  - name: Set the Initiator IQN using template
+    template: 
+      src: templates/initiatorname.iscsi.j2
+      dest: /etc/iscsi/initiatorname.iscsi
+      mode: '644'
+      owner: root
+      group: root
+  - name: Enable CHAP authentication
+    lineinfile:
+      state: present
+      path: /etc/iscsi/iscsid.conf
+      regexp: "{{ item.regexp }}"
+      line: "{{ item.line }}"
+    loop:
+      - { regexp: '^#node.session.auth.authmethod = CHAP$', line: 'node.session.auth.authmethod = CHAP' }
+      - { regexp: '^#node.session.auth.username = username$', line: 'node.session.auth.username = meher' }
+      - { regexp: '^#node.session.auth.password = password$', line: 'node.session.auth.username = test1234' }
+
+  - name: Restart the iscsid service
+    systemd:
+      service: iscsid
+      state: restarted
+      daemon_reload: yes
+  - name: discover the target
+    open_iscsi:
+      discover: yes
+      portal: "{{ target_IP }}"
+  - name: login to the target
+    open_iscsi:
+      target: "{{ target_IQN }}"
+      login: yes
+
